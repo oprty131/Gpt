@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Chatbot</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f9; }
+        #chat-container { width: 80%; max-width: 600px; height: 80%; border: 1px solid #ccc; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+        #chat-output { flex: 1; padding: 15px; overflow-y: auto; border-bottom: 1px solid #ccc; }
+        .message { margin: 10px 0; }
+        .user { text-align: right; color: blue; }
+        .bot { text-align: left; color: green; }
+        #chat-input { display: flex; }
+        #input { flex: 1; padding: 10px; border: none; outline: none; }
+        #send-button { padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="chat-output"></div>
+        <div id="chat-input">
+            <input type="text" id="input" placeholder="Type a message..." />
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatOutput = document.getElementById('chat-output');
+        const inputField = document.getElementById('input');
+        const sendButton = document.getElementById('send-button');
+
+        sendButton.addEventListener('click', () => {
+            const userMessage = inputField.value.trim();
+            if (userMessage) {
+                addMessage('user', userMessage);
+                fetchBotResponse(userMessage);
+                inputField.value = '';
+            }
+        });
+
+        function addMessage(sender, text) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', sender);
+            messageElement.textContent = text;
+            chatOutput.appendChild(messageElement);
+            chatOutput.scrollTop = chatOutput.scrollHeight;
+        }
+
+        async function fetchBotResponse(userMessage) {
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: userMessage })
+                });
+                const data = await response.json();
+                addMessage('bot', data.reply);
+            } catch (error) {
+                addMessage('bot', 'Error: Unable to fetch response');
+            }
+        }
+    </script>
+</body>
+</html>
