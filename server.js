@@ -1,10 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const { Configuration, OpenAIApi } = require('openai');
+const path = require('path'); // Import path module
 const app = express();
 const port = 3000;
 
 const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
+
+// Serve static files from the current directory
+app.use(express.static(path.join(__dirname)));
 
 app.use(express.json());
 
@@ -21,6 +25,11 @@ app.post('/chat', async (req, res) => {
         console.error("Error:", error);
         res.status(500).json({ reply: "Sorry, I'm having trouble responding right now." });
     }
+});
+
+// Serve the index.html file on the root route
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(port, () => {
