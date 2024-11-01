@@ -16,7 +16,7 @@ app.post('/chat', async (req, res) => {
     const userMessage = req.body.message;
     try {
         const response = await openai.createChatCompletion({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: userMessage }]
         });
         const botReply = response.data.choices[0].message.content;
