@@ -1,37 +1,23 @@
-require('dotenv').config();
+// server/app.js
 const express = require('express');
-const { Configuration, OpenAIApi } = require('openai');
-const path = require('path'); // Import path module
+const bodyParser = require('body-parser');
+const obfuscateLua = require('./obfuscate'); // Obfuscation logic
 const app = express();
-const port = 3000;
 
-const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
+app.use(bodyParser.json());
+app.use(express.static('public'));
 
-// Serve static files from the current directory
-app.use(express.static(path.join(__dirname)));
+// Obfuscate endpoint
+app.post('/obfuscate', (req, res) => {
+    const luaCode = req.body.luaCode;
+    if (!luaCode) return res.status(400).send('No Lua code provided');
 
-app.use(express.json());
-
-app.post('/chat', async (req, res) => {
-    const userMessage = req.body.message;
-    try {
-        const response = await openai.createChatCompletion({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: userMessage }]
-        });
-        const botReply = response.data.choices[0].message.content;
-        res.json({ reply: botReply });
-    } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ reply: "Sorry, I'm having trouble responding right now." });
-    }
+    const obfuscatedCode = obfuscateLua(luaCode);
+    res.json({ obfuscatedCode });
 });
 
-// Serve the index.html file on the root route
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
