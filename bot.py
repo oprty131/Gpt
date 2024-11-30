@@ -10,6 +10,11 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 discord_token = os.getenv("DISCORD_TOKEN")
 
+# Check if the environment variables are loaded correctly
+if not openai.api_key or not discord_token:
+    print("Error: Missing OpenAI API Key or Discord Token in environment variables.")
+    exit(1)  # Exit with error if keys are missing
+
 # Create a Discord client
 client = discord.Client()
 
@@ -55,4 +60,8 @@ async def on_message(message):
         await message.channel.send(answer)
 
 # Run the bot with your token
-client.run(discord_token)
+try:
+    client.run(discord_token)
+except Exception as e:
+    print(f"Failed to start the bot: {str(e)}")
+    exit(1)
