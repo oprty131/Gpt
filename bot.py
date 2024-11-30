@@ -50,4 +50,4 @@ async def on_message(message):
         await message.channel.send(answer)
 
 # Run the bot with your token
-client.run('your-discord-bot-token')
+client.run('MTI3OTE0NTc0NDg3NTY1MTE2Mw.G6woVV.bXTDTGTZFKu-Mu1N1GTHcjtUCOODBm946iIXno')
