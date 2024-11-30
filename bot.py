@@ -1,9 +1,14 @@
 import discord
 import openai
 import os
+from dotenv import load_dotenv
 
-# Set your OpenAI API key
-openai.api_key = 'sk-proj-hi7CtmKyloUQyoC73ry2T3BlbkFJjaGgx5Y6uUG0ScgdPT4P'
+# Load environment variables from .env file
+load_dotenv()
+
+# Set your OpenAI API key and Discord token from environment variables
+openai.api_key = os.getenv("OPENAI_API_KEY")
+discord_token = os.getenv("DISCORD_TOKEN")
 
 # Create a Discord client
 client = discord.Client()
@@ -50,4 +55,4 @@ async def on_message(message):
         await message.channel.send(answer)
 
 # Run the bot with your token
-client.run('MTI3OTE0NTc0NDg3NTY1MTE2Mw.G6woVV.bXTDTGTZFKu-Mu1N1GTHcjtUCOODBm946iIXno')
+client.run(discord_token)
