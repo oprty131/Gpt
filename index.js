@@ -35,7 +35,7 @@ client.on('messageCreate', async (message) => {
     await message.delete();
 
     // Send the deleted message content back in the same channel
-    await message.channel.send(`Deleted Message from ${message.author.tag}: ${message.content}`);
+    await message.channel.send(`${message.author.tag}: ${message.content}`);
   } catch (error) {
     console.error('Error during message delete operation:', error);
   }
