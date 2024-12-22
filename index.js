@@ -1,5 +1,7 @@
 const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
 require('dotenv').config();
+const express = require('express');
+const path = require('path');
 
 const client = new Client({
   intents: [
@@ -8,6 +10,18 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
   ],
+});
+
+const app = express();
+const port = 3000;
+
+app.get('/', (req, res) => {
+  const imagePath = path.join(__dirname, 'index.html');
+  res.sendFile(imagePath);
+});
+
+app.listen(port, () => {
+  console.log('\x1b[36m[ SERVER ]\x1b[0m', '\x1b[32m SH : http://localhost:' + port + ' ✅\x1b[0m');
 });
 
 client.once('ready', () => {
