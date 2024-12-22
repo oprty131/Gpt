@@ -28,9 +28,11 @@ client.once('ready', () => {
   console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
 });
 
-// Store states for copied users and modes
-let copyMode = 'none'; // 'all' | 'user' | 'none'
-let copiedUsers = new Set(); // Set of user IDs to copy messages from
+// Store the set of users to copy messages from (using their Discord ID or mention)
+let copiedUsers = new Set(); 
+
+// Flag to determine if copying should be enabled for everyone
+let copyAllEnabled = false;
 
 // Function to get user ID from mention
 function getUserIDFromMention(mention) {
@@ -42,59 +44,43 @@ function getUserIDFromMention(mention) {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  // Handle commands to enable/disable copying
+  // Handle the *copy command to enable or disable message copying from specific users
   if (message.content.startsWith('*copy')) {
     const args = message.content.split(' ');
 
     if (args[1] === 'all') {
-      copyMode = 'all';
-      copiedUsers.clear(); // Clear specific user settings
-      await message.reply('Copying all messages is now enabled.');
-    } else if (args[1] === 'user') {
-      const targetUser = args[2] || message.mentions.users.first()?.id;
+      // Enable copying for everyone
+      copyAllEnabled = true;
+      copiedUsers.add('all'); // Add 'all' to the set to indicate copying for everyone
+      await message.reply('Now copying messages from all users.');
+      return;
+    }
+
+    if (args[1]) {
+      const targetUser = getUserIDFromMention(args[1]) || args[1]; // Either mention or user ID
+
       if (targetUser) {
-        copyMode = 'user';
-        copiedUsers.add(targetUser);
-        await message.reply(`Copying messages from <@${targetUser}> is now enabled.`);
+        copiedUsers.add(targetUser); // Add the user to the copiedUsers set
+        await message.reply(`Now copying messages from <@${targetUser}> (ID: ${targetUser}).`);
       } else {
-        await message.reply('Please mention a user or provide a user ID.');
+        await message.reply('Please mention a user or provide a valid user ID.');
       }
-    } else if (args[1] === 'uncopy') {
-      if (args[2] === 'all') {
-        copyMode = 'none';
-        copiedUsers.clear();
-        await message.reply('Copying all messages is now disabled.');
-      } else if (args[2] === 'user') {
-        const targetUser = args[3] || message.mentions.users.first()?.id;
-        if (targetUser) {
-          copiedUsers.delete(targetUser);
-          await message.reply(`Stopped copying messages from <@${targetUser}>.`);
-        } else {
-          await message.reply('Please mention a user or provide a user ID.');
-        }
-      }
+    } else {
+      await message.reply('Please mention a user or provide a valid user ID.');
     }
     return; // Return early to avoid further processing of messages
   }
 
-  // If copying is enabled for all messages
-  if (copyMode === 'all') {
-    try {
-      // Delete the user's message
-      await message.delete();
-
-      // Send the same message back with the text and attachments
-      await message.channel.send({
-        content: `${message.author.tag}: ${message.content}`,
-        files: message.attachments.map((attachment) => attachment.url),
-      });
-    } catch (error) {
-      console.error('Error during message handling:', error);
-    }
+  // Handle *uncopy all to stop copying messages from everyone
+  if (message.content.startsWith('*uncopy all')) {
+    copyAllEnabled = false;
+    copiedUsers.delete('all');
+    await message.reply('No longer copying messages from all users.');
+    return;
   }
 
-  // If copying is enabled for specific users
-  else if (copyMode === 'user' && copiedUsers.has(message.author.id)) {
+  // Check if the message is a reply and if the user is in the copiedUsers set (or if copyAllEnabled is true)
+  if (copyAllEnabled || copiedUsers.has(message.author.id) || copiedUsers.has('all')) {
     try {
       // Delete the user's message
       await message.delete();
