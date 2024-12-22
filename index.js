@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ChannelType, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -30,23 +30,14 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  if (message.content.startsWith('*say')) {
-    try {
-      // Extract the message after the *say command
-      const sayMessage = message.content.slice(5).trim(); // Get the part after *say
+  try {
+    // Delete the user's message
+    await message.delete();
 
-      if (!sayMessage) {
-        return message.channel.send('You need to specify a message to say!');
-      }
-
-      // Delete the user's message
-      await message.delete();
-
-      // Send the message that the user requested
-      message.channel.send(sayMessage);
-    } catch (error) {
-      console.error('Error during *say operation:', error);
-    }
+    // Send the deleted message content back in the same channel
+    await message.channel.send(`Deleted Message from ${message.author.tag}: ${message.content}`);
+  } catch (error) {
+    console.error('Error during message delete operation:', error);
   }
 });
 
