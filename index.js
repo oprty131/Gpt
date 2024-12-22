@@ -8,7 +8,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -28,47 +28,85 @@ client.once('ready', () => {
   console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
 });
 
+// Store states for copied users and modes
+let copyMode = 'none'; // 'all' | 'user' | 'none'
+let copiedUsers = new Set(); // Set of user IDs to copy messages from
+
+// Function to get user ID from mention
+function getUserIDFromMention(mention) {
+  const regex = /^<@!?(\d+)>$/;
+  const match = mention.match(regex);
+  return match ? match[1] : null;
+}
+
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  try {
-    // Check if the user has Administrator permissions
-    const hasAdmin = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+  // Handle commands to enable/disable copying
+  if (message.content.startsWith('*copy')) {
+    const args = message.content.split(' ');
 
-    // Prepare the content
-    let content = message.content;
-
-    // Remove @everyone and @here mentions if the user doesn't have Administrator
-    if (!hasAdmin) {
-      content = content.replace(/@everyone|@here/g, '').trim();
+    if (args[1] === 'all') {
+      copyMode = 'all';
+      copiedUsers.clear(); // Clear specific user settings
+      await message.reply('Copying all messages is now enabled.');
+    } else if (args[1] === 'user') {
+      const targetUser = args[2] || message.mentions.users.first()?.id;
+      if (targetUser) {
+        copyMode = 'user';
+        copiedUsers.add(targetUser);
+        await message.reply(`Copying messages from <@${targetUser}> is now enabled.`);
+      } else {
+        await message.reply('Please mention a user or provide a user ID.');
+      }
+    } else if (args[1] === 'uncopy') {
+      if (args[2] === 'all') {
+        copyMode = 'none';
+        copiedUsers.clear();
+        await message.reply('Copying all messages is now disabled.');
+      } else if (args[2] === 'user') {
+        const targetUser = args[3] || message.mentions.users.first()?.id;
+        if (targetUser) {
+          copiedUsers.delete(targetUser);
+          await message.reply(`Stopped copying messages from <@${targetUser}>.`);
+        } else {
+          await message.reply('Please mention a user or provide a user ID.');
+        }
+      }
     }
+    return; // Return early to avoid further processing of messages
+  }
 
-    // Create an array for the attachments
-    const attachments = message.attachments.map((attachment) => attachment.url);
-
-    // Check if the message is a reply
-    if (message.reference) {
-      const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
-      
+  // If copying is enabled for all messages
+  if (copyMode === 'all') {
+    try {
       // Delete the user's message
       await message.delete();
 
-      // Send the reply to the original message
+      // Send the same message back with the text and attachments
       await message.channel.send({
-        content: `${message.author.tag}: ${content || '[No Text]'}`,
-        files: attachments,
-        reply: { messageReference: repliedMessage.id }, // Reply to the referenced message
+        content: `${message.author.tag}: ${message.content}`,
+        files: message.attachments.map((attachment) => attachment.url),
       });
-    } else {
-      // If the message is not a reply, send a normal message
-      await message.delete();
-      await message.channel.send({
-        content: `${message.author.tag}: ${content || '[No Text]'}`,
-        files: attachments,
-      });
+    } catch (error) {
+      console.error('Error during message handling:', error);
     }
-  } catch (error) {
-    console.error('Error during message handling:', error);
+  }
+
+  // If copying is enabled for specific users
+  else if (copyMode === 'user' && copiedUsers.has(message.author.id)) {
+    try {
+      // Delete the user's message
+      await message.delete();
+
+      // Send the same message back with the text and attachments
+      await message.channel.send({
+        content: `${message.author.tag}: ${message.content}`,
+        files: message.attachments.map((attachment) => attachment.url),
+      });
+    } catch (error) {
+      console.error('Error during message handling:', error);
+    }
   }
 });
 
