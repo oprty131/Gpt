@@ -8,6 +8,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -23,59 +24,70 @@ app.listen(port, () => {
   console.log('\x1b[36m[ SERVER ]\x1b[0m', '\x1b[32m SH : http://localhost:' + port + ' ✅\x1b[0m');
 });
 
-let lastDeletedMessage = null; // Store the last deleted message
-let isSnipeInProgress = false; // Prevent duplicate snipe embeds
+// A map to store the users being monitored
+const onlineCheckMap = new Map();
 
-client.once('ready', () => {
-  console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
+// Notify when a user goes online or offline
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+  const userId = newPresence.user.id;
+
+  if (onlineCheckMap.has(userId)) {
+    const user = newPresence.user;
+    const status = newPresence.status;
+    
+    // Send a notification when a monitored user changes their status
+    const channel = onlineCheckMap.get(userId);
+    if (status === 'online') {
+      channel.send(`${user.tag} is now online!`);
+    } else if (status === 'offline') {
+      channel.send(`${user.tag} is now offline.`);
+    }
+  }
 });
 
-// Listen for deleted messages
-client.on('messageDelete', async (message) => {
-  if (message.author.bot) return; // Ignore bot messages
-
-  // Store the deleted message's content, author, and time
-  lastDeletedMessage = {
-    content: message.content,
-    author: message.author.tag,
-    time: new Date(),
-  };
-});
-
+// Command to check if a user is online
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  // Snipe command
-  if (message.content.toLowerCase() === '!snipe') {
-    if (isSnipeInProgress) return; // Prevent duplicate snipes
-    isSnipeInProgress = true; // Set the flag to true
+  if (message.content.toLowerCase().startsWith('*checkonline')) {
+    const userMention = message.mentions.users.first() || message.content.split(' ')[1];
+    const userId = userMention.replace(/[<@!>]/g, ''); // Get userId from mention or the provided ID
 
-    try {
-      if (!lastDeletedMessage) {
-        message.channel.send('No recent messages have been deleted.');
-        isSnipeInProgress = false; // Reset the flag
-        return;
-      }
-
-      const embed = new EmbedBuilder()
-        .setColor('#FF0000')
-        .setTitle('Snipe Command')
-        .setDescription(`Message from ${lastDeletedMessage.author}:`)
-        .addFields({
-          name: 'Message Content:',
-          value: lastDeletedMessage.content || 'No content',
-        })
-        .setFooter({ text: `Deleted at ${lastDeletedMessage.time.toLocaleString()}` })
-        .setTimestamp();
-
-      // Send the embed with the deleted message content
-      await message.channel.send({ embeds: [embed] });
-
-    } catch (error) {
-      console.error('Error during snipe operation:', error);
-    } finally {
-      isSnipeInProgress = false; // Reset the flag after the command completes
+    const user = await client.users.fetch(userId);
+    
+    if (!user) {
+      return message.channel.send('User not found!');
     }
+
+    const onlineStatus = user.presence ? user.presence.status : 'offline';
+    
+    if (onlineCheckMap.has(userId)) {
+      return message.channel.send(`${user.tag} is already being monitored.`);
+    }
+
+    // Set up monitoring for the user and notify if they are online/offline
+    onlineCheckMap.set(userId, message.channel);
+    
+    message.channel.send(`Started monitoring ${user.tag}'s online status.`);
+
+    if (onlineStatus === 'online') {
+      message.channel.send(`${user.tag} is currently online!`);
+    } else {
+      message.channel.send(`${user.tag} is currently offline.`);
+    }
+  }
+
+  if (message.content.toLowerCase().startsWith('*uncheckonline')) {
+    const userMention = message.mentions.users.first() || message.content.split(' ')[1];
+    const userId = userMention.replace(/[<@!>]/g, ''); // Get userId from mention or the provided ID
+
+    if (!onlineCheckMap.has(userId)) {
+      return message.channel.send('User is not being monitored.');
+    }
+
+    // Remove the user from monitoring
+    onlineCheckMap.delete(userId);
+    message.channel.send(`Stopped monitoring ${userId}.`);
   }
 });
 
