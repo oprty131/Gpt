@@ -53,27 +53,31 @@ client.on('messageCreate', async (message) => {
     const userMention = message.mentions.users.first() || message.content.split(' ')[1];
     const userId = userMention.replace(/[<@!>]/g, ''); // Get userId from mention or the provided ID
 
-    const user = await client.users.fetch(userId);
-    
-    if (!user) {
-      return message.channel.send('User not found!');
-    }
+    try {
+      const user = await client.users.fetch(userId);
 
-    const onlineStatus = user.presence ? user.presence.status : 'offline';
-    
-    if (onlineCheckMap.has(userId)) {
-      return message.channel.send(`${user.tag} is already being monitored.`);
-    }
+      if (!user) {
+        return message.channel.send('User not found!');
+      }
 
-    // Set up monitoring for the user and notify if they are online/offline
-    onlineCheckMap.set(userId, message.channel);
-    
-    message.channel.send(`Started monitoring ${user.tag}'s online status.`);
+      const onlineStatus = user.presence ? user.presence.status : 'offline';
+      
+      if (onlineCheckMap.has(userId)) {
+        return message.channel.send(`${user.tag} is already being monitored.`);
+      }
 
-    if (onlineStatus === 'online') {
-      message.channel.send(`${user.tag} is currently online!`);
-    } else {
-      message.channel.send(`${user.tag} is currently offline.`);
+      // Set up monitoring for the user and notify if they are online/offline
+      onlineCheckMap.set(userId, message.channel);
+      
+      message.channel.send(`I will now send you a notification when ${user.tag} is online!`);
+
+      if (onlineStatus === 'online') {
+        message.channel.send(`${user.tag} is currently online!`);
+      } else {
+        message.channel.send(`${user.tag} is currently offline.`);
+      }
+    } catch (error) {
+      message.channel.send('Error fetching user. Make sure the user ID or mention is correct.');
     }
   }
 
