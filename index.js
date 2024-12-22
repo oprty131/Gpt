@@ -29,26 +29,20 @@ client.once('ready', () => {
   console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
 });
 
-client.on('messageCreate', async (message) => {
+// Listen for deleted messages
+client.on('messageDelete', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  try {
-    // Delete the user's message and store it for snipe command
-    lastDeletedMessage = {
-      content: message.content,
-      author: message.author.tag,
-      time: new Date(),
-    };
-
-    // Delete the message
-    await message.delete();
-  } catch (error) {
-    console.error('Error during message delete operation:', error);
-  }
+  // Store the deleted message's content, author, and time
+  lastDeletedMessage = {
+    content: message.content,
+    author: message.author.tag,
+    time: new Date(),
+  };
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  if (message.author.bot) return; // Ignore bot messages
 
   // Snipe command
   if (message.content.toLowerCase() === '!snipe') {
