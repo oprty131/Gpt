@@ -24,6 +24,7 @@ app.listen(port, () => {
 });
 
 let lastDeletedMessage = null; // Store the last deleted message
+let isSnipeInProgress = false; // Prevent duplicate snipe embeds
 
 client.once('ready', () => {
   console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
@@ -46,9 +47,14 @@ client.on('messageCreate', async (message) => {
 
   // Snipe command
   if (message.content.toLowerCase() === '!snipe') {
+    if (isSnipeInProgress) return; // Prevent duplicate snipes
+    isSnipeInProgress = true; // Set the flag to true
+
     try {
       if (!lastDeletedMessage) {
-        return message.channel.send('No recent messages have been deleted.');
+        message.channel.send('No recent messages have been deleted.');
+        isSnipeInProgress = false; // Reset the flag
+        return;
       }
 
       const embed = new EmbedBuilder()
@@ -64,8 +70,11 @@ client.on('messageCreate', async (message) => {
 
       // Send the embed with the deleted message content
       await message.channel.send({ embeds: [embed] });
+
     } catch (error) {
       console.error('Error during snipe operation:', error);
+    } finally {
+      isSnipeInProgress = false; // Reset the flag after the command completes
     }
   }
 });
