@@ -4,7 +4,7 @@ import os
 
 # Fetch environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TOKEN = os.getenv("TOKEN")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 # Initialize OpenAI
 openai.api_key = OPENAI_API_KEY
