@@ -1,67 +1,42 @@
 import discord
-import openai
-import os
-from dotenv import load_dotenv
+from discord.ext import commands
+from flask import Flask
+import threading
+import os  # For accessing environment variables
 
-# Load environment variables from .env file
-load_dotenv()
+# Set up Flask app
+app = Flask("")
 
-# Set your OpenAI API key and Discord token from environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
-discord_token = os.getenv("DISCORD_TOKEN")
+@app.route('/')
+def home():
+    return "Bot is running!"
 
-# Check if the environment variables are loaded correctly
-if not openai.api_key or not discord_token:
-    print("Error: Missing OpenAI API Key or Discord Token in environment variables.")
-    exit(1)  # Exit with error if keys are missing
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
 
-# Create a Discord client
-client = discord.Client()
+# Set up the Discord bot
+bot = commands.Bot(command_prefix="!")
 
-# The command prefix you want to use
-COMMAND_PREFIX = "!"
-
-# Function to call GPT-3.5
-def ask_gpt(question):
-    try:
-        # Use GPT-3.5 model for better performance
-        response = openai.Completion.create(
-            model="gpt-3.5-turbo",  # Switching to GPT-3.5
-            prompt=question,
-            max_tokens=150,  # Limit token usage to keep responses concise
-            temperature=0.7,  # Control creativity/variability
-            top_p=1.0,  # Use nucleus sampling
-            frequency_penalty=0.0,
-            presence_penalty=0.0
-        )
-        return response.choices[0].text.strip()
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
-
-# Event when the bot is ready
-@client.event
+@bot.event
 async def on_ready():
-    print(f'We have logged in as {client.user}')
+    print(f'Logged in as {bot.user}')
 
-# Event when a message is received
-@client.event
-async def on_message(message):
-    if message.author == client.user:
+@bot.command()
+async def ping(ctx):
+    await ctx.send("Pong!")
+
+def run_bot():
+    # Fetch the token from the environment variable
+    bot_token = os.getenv("TOKEN")
+    if bot_token is None:
+        print("No token found! Please set the TOKEN environment variable.")
         return
+    bot.run(bot_token)
 
-    # If the message starts with !ask or !question
-    if message.content.startswith(('!ask', '!question')):
-        question = message.content[len(COMMAND_PREFIX):].strip()
+# Create separate threads for Flask and the bot
+if __name__ == "__main__":
+    flask_thread = threading.Thread(target=run_flask)
+    bot_thread = threading.Thread(target=run_bot)
 
-        # Call the GPT function and get the answer
-        answer = ask_gpt(question)
-
-        # Send the answer back to the Discord channel
-        await message.channel.send(answer)
-
-# Run the bot with your token
-try:
-    client.run(discord_token)
-except Exception as e:
-    print(f"Failed to start the bot: {str(e)}")
-    exit(1)
+    flask_thread.start()
+    bot_thread.start()
