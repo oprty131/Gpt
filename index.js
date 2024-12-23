@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -9,6 +9,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.DirectMessages,
   ],
 });
 
@@ -21,18 +22,18 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log('\x1b[36m[ SERVER ]\x1b[0m', '\x1b[32m SH : http://localhost:' + port + ' ✅\x1b[0m');
+  console.log('\x1b[36m[ SERVER ]\x1b[0m', `\x1b[32m SH : http://localhost:${port} ✅\x1b[0m`);
 });
 
 client.once('ready', () => {
   console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
 });
 
-// Store the set of users to copy messages from (using their Discord ID or mention)
-let copiedUsers = new Set(); 
-
-// Flag to determine if copying should be enabled for everyone
-let copyAllEnabled = false;
+// Store the forwarding channel, user mappings, and copied users
+let forwardingChannel = null;
+const userMappings = new Map(); // Map of userID to DM forwarding channel
+let copiedUsers = new Set(); // Set of user IDs to copy messages from
+let copyAllEnabled = false; // Flag to enable copying from everyone
 
 // Function to get user ID from mention
 function getUserIDFromMention(mention) {
@@ -44,47 +45,69 @@ function getUserIDFromMention(mention) {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  // Handle the *copy command to enable or disable message copying from specific users
-  if (message.content.startsWith('*copy')) {
-    const args = message.content.split(' ');
+  const args = message.content.split(' ');
 
+  // Handle *set command
+  if (message.content.startsWith('*set')) {
+    if (!message.member.permissions.has('Administrator')) {
+      return message.reply('You do not have permission to use this command.');
+    }
+
+    const channel = message.mentions.channels.first() || client.channels.cache.get(args[1]);
+    if (channel) {
+      forwardingChannel = channel.id;
+      await message.reply(`Forwarding channel set to <#${channel.id}>.`);
+    } else {
+      await message.reply('Please mention a valid channel or provide a valid channel ID.');
+    }
+    return;
+  }
+
+  // Handle *setuser command
+  if (message.content.startsWith('*setuser')) {
+    if (!forwardingChannel) {
+      return message.reply('No forwarding channel is set. Use *set first.');
+    }
+
+    const targetUser = message.mentions.users.first() || client.users.cache.get(args[1]);
+    if (targetUser) {
+      userMappings.set(targetUser.id, forwardingChannel);
+      await message.reply(`Messages for <@${targetUser.id}> will now be forwarded to their DMs.`);
+    } else {
+      await message.reply('Please mention a valid user or provide a valid user ID.');
+    }
+    return;
+  }
+
+  // Handle the *copy command
+  if (message.content.startsWith('*copy')) {
     if (args[1] === 'all') {
-      // Enable copying for everyone
       copyAllEnabled = true;
-      copiedUsers.add('all'); // Add 'all' to the set to indicate copying for everyone
+      copiedUsers.add('all');
       await message.reply('Now copying messages from all users.');
       return;
     }
 
-    if (args[1]) {
-      const targetUser = getUserIDFromMention(args[1]) || args[1]; // Either mention or user ID
-
-      if (targetUser) {
-        copiedUsers.add(targetUser); // Add the user to the copiedUsers set
-        await message.reply(`Now copying messages from <@${targetUser}> (ID: ${targetUser}).`);
-      } else {
-        await message.reply('Please mention a user or provide a valid user ID.');
-      }
+    const targetUser = getUserIDFromMention(args[1]) || args[1];
+    if (targetUser) {
+      copiedUsers.add(targetUser);
+      await message.reply(`Now copying messages from <@${targetUser}> (ID: ${targetUser}).`);
     } else {
       await message.reply('Please mention a user or provide a valid user ID.');
     }
-    return; // Return early to avoid further processing of messages
+    return;
   }
 
-  // Handle *uncopy to stop copying messages from specific users
+  // Handle *uncopy command
   if (message.content.startsWith('*uncopy')) {
-    const args = message.content.split(' ');
-
     if (args[1] === 'all') {
-      // Disable copying for everyone
       copyAllEnabled = false;
       copiedUsers.delete('all');
       await message.reply('No longer copying messages from all users.');
     } else if (args[1]) {
-      const targetUser = getUserIDFromMention(args[1]) || args[1]; // Either mention or user ID
-
+      const targetUser = getUserIDFromMention(args[1]) || args[1];
       if (targetUser) {
-        copiedUsers.delete(targetUser); // Remove user from the copiedUsers set
+        copiedUsers.delete(targetUser);
         await message.reply(`No longer copying messages from <@${targetUser}> (ID: ${targetUser}).`);
       } else {
         await message.reply('Please mention a user or provide a valid user ID.');
@@ -92,27 +115,43 @@ client.on('messageCreate', async (message) => {
     } else {
       await message.reply('Please specify who to stop copying from (either a user or "all").');
     }
-    return; // Return early to avoid further processing of messages
+    return;
   }
 
-  // Check if the message is a reply and if the user is in the copiedUsers set (or if copyAllEnabled is true)
-  if (copyAllEnabled || copiedUsers.has(message.author.id) || copiedUsers.has('all')) {
-    try {
-      // Delete the user's message
-      await message.delete();
+  // Forward DMs to the set channel
+  if (message.channel.type === 'DM' && forwardingChannel) {
+    const channel = client.channels.cache.get(forwardingChannel);
+    if (channel) {
+      await channel.send(`DM from **${message.author.tag}** (ID: ${message.author.id}):\n${message.content}`);
+    }
+    return;
+  }
 
-      // Send the same message back with the text and attachments (ensure it only sends once)
-      const sentMessage = await message.channel.send({
+  // Forward channel messages to user DMs
+  if (message.channel.id === forwardingChannel && userMappings.size > 0) {
+    const targetUserID = [...userMappings.keys()].find((id) => message.mentions.users.has(id) || id === args[1]);
+    if (targetUserID) {
+      const targetUser = client.users.cache.get(targetUserID);
+      if (targetUser) {
+        try {
+          await targetUser.send(message.content);
+        } catch (err) {
+          console.error(`Could not send DM to ${targetUser.tag}:`, err);
+          await message.reply(`Could not send DM to <@${targetUserID}>.`);
+        }
+      }
+    }
+  }
+
+  // Copy messages based on the copy command
+  if (copyAllEnabled || copiedUsers.has(message.author.id)) {
+    try {
+      await message.channel.send({
         content: `${message.author.tag}: ${message.content}`,
         files: message.attachments.map((attachment) => attachment.url),
       });
-
-      // Ensure the message is not sent again
-      if (!sentMessage) {
-        console.log('Failed to send the message.');
-      }
     } catch (error) {
-      console.error('Error during message handling:', error);
+      console.error('Error copying message:', error);
     }
   }
 });
